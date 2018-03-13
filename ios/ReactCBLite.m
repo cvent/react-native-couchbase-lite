@@ -215,4 +215,23 @@ RCT_EXPORT_METHOD(installPrebuiltDatabase:(NSString *) databaseName)
     }
 }
 
+RCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
+                  password: (NSString *) password )
+{
+    if (manager == NULL) {
+        manager = [CBLManager sharedInstance];
+    }
+    
+    CBLDatabaseOptions* options = [[CBLDatabaseOptions alloc] init];
+    options.storageType = @"SQLite";
+    options.encryptionKey = password;
+    options.create = YES;
+    CBLDatabase* db = [manager openDatabaseNamed:databaseName withOptions:options error:nil];
+    
+    if (db != NULL) {
+        NSLog(@"Encrypted Database Created");
+    }
+}
+
+
 @end

@@ -5,6 +5,7 @@ import android.os.AsyncTask;
 
 import com.couchbase.lite.CouchbaseLiteException;
 import com.couchbase.lite.Database;
+import com.couchbase.lite.DatabaseOptions;
 import com.couchbase.lite.Manager;
 import com.couchbase.lite.View;
 import com.couchbase.lite.android.AndroidContext;
@@ -366,5 +367,18 @@ public class ReactCBLite extends ReactContextBaseJavaModule {
         }
 
     }
+
+    @ReactMethod
+    public void openEncryptedDatabase(String databaseName, String password) {
+        if (manager == null) {
+            manager = new Manager(new AndroidContext(this.context), Manager.DEFAULT_OPTIONS);
+        }
+
+        DatabaseOptions options = new DatabaseOptions();
+        options.setCreate(true);
+        options.setEncryptionKey(password);
+        Database database = manager.openDatabase(databaseName, options);
+    }
+
 
 }
