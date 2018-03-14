@@ -215,7 +215,7 @@ RCT_EXPORT_METHOD(installPrebuiltDatabase:(NSString *) databaseName)
     }
 }
 
-RCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
+RRCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
                   password: (NSString *) password )
 {
     if (manager == NULL) {
@@ -227,9 +227,19 @@ RCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
     options.encryptionKey = password;
     options.create = YES;
     CBLDatabase* db = [manager openDatabaseNamed:databaseName withOptions:options error:nil];
-    
+
     if (db != NULL) {
-        NSLog(@"Encrypted Database Created");
+        CBLView* attendeeSearchView = [db existingViewNamed:@"AttendeeSearch"];
+
+        if(attendeeSearchView == NULL) {
+            // Attendee Search view does not exist... create it.
+            [[db viewNamed: @"AttendeeSearch"] setMapBlock: MAPBLOCK({
+                if (doc[@"type"] == @"Attendee") {
+                    emit(CBLTextKey(doc[@"name"]), doc);
+                }
+            }) reduceBlock: NULL version: @"1"];
+
+        }
     }
 }
 
