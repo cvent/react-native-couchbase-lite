@@ -369,7 +369,7 @@ public class ReactCBLite extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void openEncryptedDatabase(String databaseName, String password) {
+    public void openEncryptedDatabase(String databaseName, String password) throws IOException, CouchbaseLiteException {
         if (manager == null) {
             manager = new Manager(new AndroidContext(this.context), Manager.DEFAULT_OPTIONS);
         }
