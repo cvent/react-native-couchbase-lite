@@ -32,24 +32,24 @@ RCT_EXPORT_METHOD(initWithAuth:(NSString*)username password:(NSString*)password 
     @try {
         NSLog(@"Launching Couchbase Lite...");
         // not using [CBLManager sharedInstance] because it doesn't behave well when the app is backgrounded
-
+        
         CBLManagerOptions options = {
             NO, //readonly
             NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication //fileProtection
         };
         NSError* error;
         manager = [[CBLManager alloc] initWithDirectory: [CBLManager defaultDirectory]
-                                                        options: &options error: &error];
-
+                                                options: &options error: &error];
+        
         CBLRegisterJSViewCompiler();
-
+        
         //register the server with CBL_URLProtocol
         [manager internalURL];
-
+        
         int suggestedPort = 5984;
-
+        
         listener = [self createListener:suggestedPort withUsername:username withPassword:password withCBLManager: manager];
-
+        
         NSLog(@"Couchbase Lite listening on port <%@>", listener.URL.port);
         NSString *extenalUrl = [NSString stringWithFormat:@"http://%@:%@@localhost:%@/", username, password, listener.URL.port];
         callback(@[extenalUrl, [NSNull null]]);
@@ -60,27 +60,27 @@ RCT_EXPORT_METHOD(initWithAuth:(NSString*)username password:(NSString*)password 
 }
 
 - (CBLListener*) createListener: (int) port
-                  withUsername: (NSString *) username
-                  withPassword: (NSString *) password
-                withCBLManager: (CBLManager*) cblManager
+                   withUsername: (NSString *) username
+                   withPassword: (NSString *) password
+                 withCBLManager: (CBLManager*) cblManager
 {
-
+    
     CBLListener* listener = [[CBLListener alloc] initWithManager:cblManager port:port];
     [listener setPasswords:@{username: password}];
-
+    
     NSLog(@"Trying port %d", port);
-
+    
     NSError *err = nil;
     BOOL success = [listener start: &err];
-
+    
     if (success) {
         NSLog(@"Couchbase Lite running on %@", listener.URL);
         return listener;
     } else {
         NSLog(@"Could not start listener on port %d: %@", port, err);
-
+        
         port++;
-
+        
         return [self createListener:port withUsername:username withPassword:password withCBLManager: cblManager];
     }
 }
@@ -216,32 +216,89 @@ RCT_EXPORT_METHOD(installPrebuiltDatabase:(NSString *) databaseName)
 }
 
 RRCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
-                  password: (NSString *) password )
+                   password: (NSString *) password )
 {
     if (manager == NULL) {
         manager = [CBLManager sharedInstance];
     }
     
+    [self openFTSDatabase:name password:password];
+    
     CBLDatabaseOptions* options = [[CBLDatabaseOptions alloc] init];
     options.storageType = @"SQLite";
     options.encryptionKey = password;
     options.create = YES;
-    CBLDatabase* db = [manager openDatabaseNamed:databaseName withOptions:options error:nil];
-
-    if (db != NULL) {
-        CBLView* attendeeSearchView = [db existingViewNamed:@"AttendeeSearch"];
-
-        if(attendeeSearchView == NULL) {
-            // Attendee Search view does not exist... create it.
-            [[db viewNamed: @"AttendeeSearch"] setMapBlock: MAPBLOCK({
-                if (doc[@"type"] == @"Attendee") {
-                    emit(CBLTextKey(doc[@"name"]), doc);
-                }
-            }) reduceBlock: NULL version: @"1"];
-
+    couchDb = [manager openDatabaseNamed:databaseName withOptions:options error:nil];
+    
+    if (!couchDb) {
+        NSLog(@"ERROR: Cannot open couch database: %@", error);
+    }
+    else {
+        NSLog(@"OK: Couch database open");
+    }
+    
+    [[NSNotificationCenter defaultCenter] addObserverForName:kCBLDatabaseChangeNotification object:couchDb queue:nil usingBlock:^(NSNotification * _Nonnull n) {
+        NSArray* changes = n.userInfo[@"changes"];
+        char* err;
+        for(int i=0; i< changes.count; i++) {
+            CBLDatabaseChange* change = changes[i];
+            CBLDocument*  doc = [couchDb documentWithID:change.documentID];
+            if ([doc[@"type"]  isEqual: @"Attendee"]) {
+                NSLog(@"OK: change notification for document: %@", change.documentID);
+                NSString* insert = [NSString stringWithFormat:@"INSERT INTO full_text_search(doc_type, doc_id, doc_text) VALUES('%@', '%@', '%@');", @"Attendee",doc[@"_id"], @"hi chad"];
+                sqlite3_exec(ftsDb , [insert UTF8String], NULL, NULL, &err);
+            }
         }
+    }];
+}
+
+-(void) openFTSDatabase : (NSString*) name  password:(NSString*) password {
+    NSString* databasePath;
+    NSArray*  paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString* documentsDirectory = [paths objectAtIndex:0];
+    BOOL      bDatabaseExists = false;
+    
+    databasePath    = [[NSString alloc]initWithString:[documentsDirectory stringByAppendingPathComponent:[NSString stringWithFormat:@"%@_ft.db", name]]];
+    bDatabaseExists = [[NSFileManager defaultManager] fileExistsAtPath:databasePath];
+    
+    if (sqlite3_open([databasePath UTF8String], &ftsDb) == SQLITE_OK)
+    {
+        NSLog(@"OK: Opening full text search database: %@", name);
+        if (!bDatabaseExists) {
+            char *error;
+            sqlite3_exec(ftsDb, [@"CREATE VIRTUAL TABLE full_text_search USING fts4(tokenize = porter, doc_type, doc_id, doc_text)" UTF8String], NULL, NULL, &error);
+            
+            if (error != NULL) {
+                NSLog(@"ERROR: Creating full text search table");
+            } else {
+                NSLog(@"OK: Creating full text table");
+            }
+        }
+        
+    }
+    else {
+        NSLog(@"ERROR: Opening full text database: %@", name);
     }
 }
 
+RCT_REMAP_METHOD(attendeeSearch, term:(NSString*)term,
+                 resolver: (RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject)
+{
+    NSMutableArray *retVal = [[NSMutableArray alloc] init];
+    NSString *queryStatement = [NSString stringWithFormat:@"SELECT doc_id FROM full_text_search WHERE doc_text LIKE '%@'",term];
+    sqlite3_stmt *statement;
+    if (sqlite3_prepare_v2(ftsDb, [queryStatement UTF8String], -1, &statement, NULL) == SQLITE_OK)
+    {
+        while (sqlite3_step(statement) == SQLITE_ROW) {
+            char *field1 = (char *) sqlite3_column_text(statement,0);
+            NSString *field1Str = [[NSString alloc] initWithUTF8String: field1];
+            
+            [retVal addObject:field1Str];
+        }
+        sqlite3_finalize(statement);
+    }
+    resolve(retVal);
+}
 
 @end

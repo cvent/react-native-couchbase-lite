@@ -18,5 +18,7 @@
 {
     CBLListener *listener;
     CBLManager *manager;
+    sqlite3* ftsDb;
+    CBLDatabase* couchDb;
 }
 @end
