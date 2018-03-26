@@ -8,8 +8,6 @@ import com.couchbase.lite.Database;
 import com.couchbase.lite.DatabaseOptions;
 import com.couchbase.lite.Manager;
 import com.couchbase.lite.View;
-import com.couchbase.lite.Mapper;
-import com.couchbase.lite.Emitter;
 import com.couchbase.lite.android.AndroidContext;
 import com.couchbase.lite.javascript.JavaScriptReplicationFilterCompiler;
 import com.couchbase.lite.javascript.JavaScriptViewCompiler;
@@ -23,7 +21,6 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.WritableMap;
-import com.sun.org.apache.xml.internal.resolver.Catalog;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -372,35 +369,15 @@ public class ReactCBLite extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void openEncryptedDatabase(String databaseName, String password) {
-        try {
-            if (manager == null) {
-                manager = new Manager(new AndroidContext(this.context), Manager.DEFAULT_OPTIONS);
-            }
-
-            DatabaseOptions options = new DatabaseOptions();
-            options.setCreate(true);
-            options.setEncryptionKey(password);
-            Database database = manager.openDatabase(databaseName, options);
-
-            if (database != null) {
-                View view = database.getView("AttendeeSearch");
-
-                if ( view.getMap() == null) {
-                    view.setMap(new Mapper() {
-                    @Override
-                    public void map(Map<String, Object> document, Emitter emitter) {
-                        if (document.get("type") == "Attendee") {
-                            emitter.emit(document.get("name"), document);
-                        }
-                    }
-                }, "1");
-
-            }
-        } catch(Exception err ) {
-            err.printStackTrace();
+    public void openEncryptedDatabase(String databaseName, String password) throws IOException, CouchbaseLiteException {
+        if (manager == null) {
+            manager = new Manager(new AndroidContext(this.context), Manager.DEFAULT_OPTIONS);
         }
 
+        DatabaseOptions options = new DatabaseOptions();
+        options.setCreate(true);
+        options.setEncryptionKey(password);
+        Database database = manager.openDatabase(databaseName, options);
     }
 
 
