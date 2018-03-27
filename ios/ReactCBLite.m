@@ -221,6 +221,8 @@ RCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
     else {
         NSLog(@"OK: Couch database open");
     }
+
+    [self createIndex];
     
     [[NSNotificationCenter defaultCenter] addObserverForName:kCBLDatabaseChangeNotification object:couchDb queue:nil usingBlock:^(NSNotification * _Nonnull n) {
         NSArray* changes = n.userInfo[@"changes"];
@@ -236,6 +238,20 @@ RCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
         }
     }];
 }
+
+-(void)createIndex {
+    CBLView* attendeeSearchView = [couchDb existingViewNamed:@"AttendeeSearch"];
+    if(attendeeSearchView == NULL) {
+        // Attendee Search view does not exist... create it.
+        [[couchDb viewNamed: @"AttendeeSearch"] setMapBlock: MAPBLOCK({
+            if ([doc[@"type"] isEqual: @"Attendee"]) {
+                emit(CBLTextKey(doc[@"name"]), doc[@"_id"]);
+            }        
+        }) reduceBlock: NULL version: @"1"];
+    }
+}
+
+
 -(void) openFTSDatabase : (NSString*) name  password:(NSString*) password {
     NSString* databasePath;
     NSArray*  paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
@@ -264,6 +280,7 @@ RCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
         NSLog(@"ERROR: Opening full text database: %@", name);
     }
 }
+
 RCT_REMAP_METHOD(attendeeSearch, term:(NSString*)term
                  resolver: (RCTPromiseResolveBlock)resolve
                  rejecter: (RCTPromiseRejectBlock)reject)
@@ -283,4 +300,42 @@ RCT_REMAP_METHOD(attendeeSearch, term:(NSString*)term
     }
     resolve(retVal);
 }
+
+RCT_REMAP_METHOD(attendeeSearchCouch, term:(NSString*)term
+                 resolver: (RCTPromiseResolveBlock)resolve
+                 rejecter: (RCTPromiseRejectBlock)reject)
+{
+    NSMutableArray *retVal = [[NSMutableArray alloc] init];
+    NSError* error;
+    CBLQuery* query = [[couchDb viewNamed: @"AttendeeSearch"] createQuery];
+    query.fullTextQuery = term;
+    query.fullTextSnippets = YES;
+    
+    CBLQueryEnumerator* result = [query run: &error];
+    
+    NSLog(@"Query Term='%@' found=%lu", term, (unsigned long)result.count );
+    
+    for (CBLFullTextQueryRow* row in result) {
+        [retVal addObject:row.value];
+    }
+    resolve(retVal);
+}
+
+RCT_EXPORT_METHOD(fakeData)
+{
+    NSError* error;
+
+    NSDictionary* properties = @{@"name": @"Some Dude", @"type":@"Attendee"};
+    CBLDocument* document = [couchDb documentWithID: @"stu"];
+    if (![document putProperties: properties error: &error]) {
+        NSLog(@"%@", error.localizedDescription);
+    }
+    
+    properties = @{@"name": @"Another Guy", @"type":@"Attendee"};
+    document = [couchDb documentWithID: @"chad"];
+    if (![document putProperties: properties error: &error]) {
+        NSLog(@"%@", error.localizedDescription);
+    }
+}
+
 @end
