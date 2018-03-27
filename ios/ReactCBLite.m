@@ -200,14 +200,13 @@ RCT_EXPORT_METHOD(installPrebuiltDatabase:(NSString *) databaseName)
         [manager replaceDatabaseNamed:databaseName withDatabaseDir:dbPath error:nil];
     }
 }
+
 RCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
                    password: (NSString *) password )
 {
     if (manager == NULL) {
         manager = [CBLManager sharedInstance];
     }
-    
-    [self openFTSDatabase:databaseName password:password];
     
     CBLDatabaseOptions* options = [[CBLDatabaseOptions alloc] init];
     options.storageType = @"SQLite";
@@ -222,24 +221,24 @@ RCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
         NSLog(@"OK: Couch database open");
     }
 
-    [self createIndex];
+    [self createAttendeeFullTextIndex];
     
-    [[NSNotificationCenter defaultCenter] addObserverForName:kCBLDatabaseChangeNotification object:couchDb queue:nil usingBlock:^(NSNotification * _Nonnull n) {
-        NSArray* changes = n.userInfo[@"changes"];
-        char* err;
-        for(int i=0; i< changes.count; i++) {
-            CBLDatabaseChange* change = changes[i];
-            CBLDocument*  doc = [couchDb documentWithID:change.documentID];
-            if ([doc[@"type"]  isEqual: @"Attendee"]) {
-                NSLog(@"OK: change notification for document: %@", change.documentID);
-                NSString* insert = [NSString stringWithFormat:@"INSERT INTO full_text_search(doc_type, doc_id, doc_text) VALUES('%@', '%@', '%@');", @"Attendee",doc[@"_id"], @"hi chad"];
-                sqlite3_exec(ftsDb , [insert UTF8String], NULL, NULL, &err);
-            }
-        }
-    }];
+    // [[NSNotificationCenter defaultCenter] addObserverForName:kCBLDatabaseChangeNotification object:couchDb queue:nil usingBlock:^(NSNotification * _Nonnull n) {
+    //     NSArray* changes = n.userInfo[@"changes"];
+    //     char* err;
+    //     for(int i=0; i< changes.count; i++) {
+    //         CBLDatabaseChange* change = changes[i];
+    //         CBLDocument*  doc = [couchDb documentWithID:change.documentID];
+    //         if ([doc[@"type"]  isEqual: @"Attendee"]) {
+    //             NSLog(@"OK: change notification for document: %@", change.documentID);
+    //             NSString* insert = [NSString stringWithFormat:@"INSERT INTO full_text_search(doc_type, doc_id, doc_text) VALUES('%@', '%@', '%@');", @"Attendee",doc[@"_id"], @"hi chad"];
+    //             sqlite3_exec(ftsDb , [insert UTF8String], NULL, NULL, &err);
+    //         }
+    //     }
+    // }];
 }
 
--(void)createIndex {
+-(void)createAttendeeFullTextIndex {
     CBLView* attendeeSearchView = [couchDb existingViewNamed:@"AttendeeSearch"];
     if(attendeeSearchView == NULL) {
         // Attendee Search view does not exist... create it.
@@ -251,91 +250,80 @@ RCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
     }
 }
 
+RCT_REMAP_METHOD(attendeeSearch,
+                couchTerm:(NSString*)term
+                resolver: (RCTPromiseResolveBlock)resolve
+                rejecter: (RCTPromiseRejectBlock)reject)
+{
+   CBLManager* mgr = couchDb.manager;
+   NSString* name = couchDb.name;
 
--(void) openFTSDatabase : (NSString*) name  password:(NSString*) password {
-    NSString* databasePath;
-    NSArray*  paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSString* documentsDirectory = [paths objectAtIndex:0];
-    BOOL      bDatabaseExists = false;
+   [mgr backgroundTellDatabaseNamed: name to: ^(CBLDatabase *bgDb) {
+       NSMutableArray *retVal = [[NSMutableArray alloc] init];
+       NSError* error;
+       CBLQuery* query = [[bgDb viewNamed: @"AttendeeSearch"] createQuery];
+       query.fullTextQuery = term;
+       query.fullTextSnippets = YES;
+       
+       CBLQueryEnumerator* result = [query run: &error];
+       
+       NSLog(@"Query Term='%@' found=%lu", term, (unsigned long)result.count );
+       
+       for (CBLFullTextQueryRow* row in result) {
+           [retVal addObject:row.value];
+       }
+       
+       resolve(retVal);
+   }];
+}
+
+// -(void) openFTSDatabase : (NSString*) name  password:(NSString*) password {
+//     NSString* databasePath;
+//     NSArray*  paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+//     NSString* documentsDirectory = [paths objectAtIndex:0];
+//     BOOL      bDatabaseExists = false;
     
-    databasePath    = [[NSString alloc]initWithString:[documentsDirectory stringByAppendingPathComponent:[NSString stringWithFormat:@"%@_ft.db", name]]];
-    bDatabaseExists = [[NSFileManager defaultManager] fileExistsAtPath:databasePath];
+//     databasePath    = [[NSString alloc]initWithString:[documentsDirectory stringByAppendingPathComponent:[NSString stringWithFormat:@"%@_ft.db", name]]];
+//     bDatabaseExists = [[NSFileManager defaultManager] fileExistsAtPath:databasePath];
     
-    if (sqlite3_open([databasePath UTF8String], &ftsDb) == SQLITE_OK)
-    {
-        NSLog(@"OK: Opening full text search database: %@", name);
-        if (!bDatabaseExists) {
-            char *error;
-            sqlite3_exec(ftsDb, [@"CREATE VIRTUAL TABLE full_text_search USING fts4(tokenize = porter, doc_type, doc_id, doc_text)" UTF8String], NULL, NULL, &error);
+//     if (sqlite3_open([databasePath UTF8String], &ftsDb) == SQLITE_OK)
+//     {
+//         NSLog(@"OK: Opening full text search database: %@", name);
+//         if (!bDatabaseExists) {
+//             char *error;
+//             sqlite3_exec(ftsDb, [@"CREATE VIRTUAL TABLE full_text_search USING fts4(tokenize = porter, doc_type, doc_id, doc_text)" UTF8String], NULL, NULL, &error);
             
-            if (error != NULL) {
-                NSLog(@"ERROR: Creating full text search table");
-            } else {
-                NSLog(@"OK: Creating full text table");
-            }
-        }
+//             if (error != NULL) {
+//                 NSLog(@"ERROR: Creating full text search table");
+//             } else {
+//                 NSLog(@"OK: Creating full text table");
+//             }
+//         }
         
-    }
-    else {
-        NSLog(@"ERROR: Opening full text database: %@", name);
-    }
-}
+//     }
+//     else {
+//         NSLog(@"ERROR: Opening full text database: %@", name);
+//     }
+// }
 
-RCT_REMAP_METHOD(attendeeSearch, term:(NSString*)term
-                 resolver: (RCTPromiseResolveBlock)resolve
-                 rejecter: (RCTPromiseRejectBlock)reject)
-{
-    NSMutableArray *retVal = [[NSMutableArray alloc] init];
-    NSString *queryStatement = [NSString stringWithFormat:@"SELECT doc_id FROM full_text_search WHERE doc_text LIKE '%@'",term];
-    sqlite3_stmt *statement;
-    if (sqlite3_prepare_v2(ftsDb, [queryStatement UTF8String], -1, &statement, NULL) == SQLITE_OK)
-    {
-        while (sqlite3_step(statement) == SQLITE_ROW) {
-            char *field1 = (char *) sqlite3_column_text(statement,0);
-            NSString *field1Str = [[NSString alloc] initWithUTF8String: field1];
+// RCT_REMAP_METHOD(attendeeSearch, term:(NSString*)term
+//                  resolver: (RCTPromiseResolveBlock)resolve
+//                  rejecter: (RCTPromiseRejectBlock)reject)
+// {
+//     NSMutableArray *retVal = [[NSMutableArray alloc] init];
+//     NSString *queryStatement = [NSString stringWithFormat:@"SELECT doc_id FROM full_text_search WHERE doc_text LIKE '%@'",term];
+//     sqlite3_stmt *statement;
+//     if (sqlite3_prepare_v2(ftsDb, [queryStatement UTF8String], -1, &statement, NULL) == SQLITE_OK)
+//     {
+//         while (sqlite3_step(statement) == SQLITE_ROW) {
+//             char *field1 = (char *) sqlite3_column_text(statement,0);
+//             NSString *field1Str = [[NSString alloc] initWithUTF8String: field1];
             
-            [retVal addObject:field1Str];
-        }
-        sqlite3_finalize(statement);
-    }
-    resolve(retVal);
-}
-
-RCT_REMAP_METHOD(attendeeSearchCouch, term:(NSString*)term
-                 resolver: (RCTPromiseResolveBlock)resolve
-                 rejecter: (RCTPromiseRejectBlock)reject)
-{
-    NSMutableArray *retVal = [[NSMutableArray alloc] init];
-    NSError* error;
-    CBLQuery* query = [[couchDb viewNamed: @"AttendeeSearch"] createQuery];
-    query.fullTextQuery = term;
-    query.fullTextSnippets = YES;
-    
-    CBLQueryEnumerator* result = [query run: &error];
-    
-    NSLog(@"Query Term='%@' found=%lu", term, (unsigned long)result.count );
-    
-    for (CBLFullTextQueryRow* row in result) {
-        [retVal addObject:row.value];
-    }
-    resolve(retVal);
-}
-
-RCT_EXPORT_METHOD(fakeData)
-{
-    NSError* error;
-
-    NSDictionary* properties = @{@"name": @"Some Dude", @"type":@"Attendee"};
-    CBLDocument* document = [couchDb documentWithID: @"1"];
-    if (![document putProperties: properties error: &error]) {
-        NSLog(@"%@", error.localizedDescription);
-    }
-    
-    properties = @{@"name": @"Another Guy", @"type":@"Attendee"};
-    document = [couchDb documentWithID: @"2"];
-    if (![document putProperties: properties error: &error]) {
-        NSLog(@"%@", error.localizedDescription);
-    }
-}
+//             [retVal addObject:field1Str];
+//         }
+//         sqlite3_finalize(statement);
+//     }
+//     resolve(retVal);
+// }
 
 @end
