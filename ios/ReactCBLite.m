@@ -326,13 +326,13 @@ RCT_EXPORT_METHOD(fakeData)
     NSError* error;
 
     NSDictionary* properties = @{@"name": @"Some Dude", @"type":@"Attendee"};
-    CBLDocument* document = [couchDb documentWithID: @"stu"];
+    CBLDocument* document = [couchDb documentWithID: @"1"];
     if (![document putProperties: properties error: &error]) {
         NSLog(@"%@", error.localizedDescription);
     }
     
     properties = @{@"name": @"Another Guy", @"type":@"Attendee"};
-    document = [couchDb documentWithID: @"chad"];
+    document = [couchDb documentWithID: @"2"];
     if (![document putProperties: properties error: &error]) {
         NSLog(@"%@", error.localizedDescription);
     }

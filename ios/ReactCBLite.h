@@ -13,7 +13,7 @@
 #endif
 #import <CouchbaseLite/CouchbaseLite.h>
 #import <CouchbaseLiteListener/CBLListener.h>
-#import "sqllite3.h"
+#import "sqlite3.h"
 
 @interface ReactCBLite : NSObject <RCTBridgeModule>
 {
