@@ -5,28 +5,21 @@
 //  Created by James Nocentini on 02/12/2015.
 //  Copyright © 2015 Couchbase. All rights reserved.
 //
-
 #import "ReactCBLite.h"
-
 #import "RCTLog.h"
-
 #import "CouchbaseLite/CouchbaseLite.h"
 #import "CouchbaseLiteListener/CouchbaseLiteListener.h"
 #import "CBLRegisterJSViewCompiler.h"
 #import <AssetsLibrary/AssetsLibrary.h>
 #import "ReactCBLiteRequestHandler.h"
-
 @implementation ReactCBLite
-
 RCT_EXPORT_MODULE()
-
 RCT_EXPORT_METHOD(init:(RCTResponseSenderBlock)callback)
 {
     NSString* username = [NSString stringWithFormat:@"u%d", arc4random() % 100000000];
     NSString* password = [NSString stringWithFormat:@"p%d", arc4random() % 100000000];
     [self initWithAuth:username password:password callback:callback];
 }
-
 RCT_EXPORT_METHOD(initWithAuth:(NSString*)username password:(NSString*)password callback:(RCTResponseSenderBlock)callback)
 {
     @try {
@@ -58,7 +51,6 @@ RCT_EXPORT_METHOD(initWithAuth:(NSString*)username password:(NSString*)password 
         callback(@[[NSNull null], e.reason]);
     }
 }
-
 - (CBLListener*) createListener: (int) port
                    withUsername: (NSString *) username
                    withPassword: (NSString *) password
@@ -84,7 +76,6 @@ RCT_EXPORT_METHOD(initWithAuth:(NSString*)username password:(NSString*)password 
         return [self createListener:port withUsername:username withPassword:password withCBLManager: cblManager];
     }
 }
-
 // stop and start are needed because the OS appears to kill the listener when the app becomes inactive (when the screen is locked, or its put in the background)
 RCT_EXPORT_METHOD(startListener)
 {
@@ -96,13 +87,11 @@ RCT_EXPORT_METHOD(startListener)
         NSLog(@"Couchbase Lite couldn't start listener at %@: %@", listener.URL, error.localizedDescription);
     }
 }
-
 RCT_EXPORT_METHOD(stopListener)
 {
     NSLog(@"Stopping Couchbase Lite listener process");
     [listener stop];
 }
-
 RCT_EXPORT_METHOD(upload:(NSString *)method
                   authHeader:(NSString *)authHeader
                   sourceUri:(NSString *)sourceUri
@@ -145,7 +134,6 @@ RCT_EXPORT_METHOD(upload:(NSString *)method
         [self sendData:method authHeader:authHeader data:data targetUri:targetUri contentType:contentType callback:callback];
     }
 }
-
 - (void) sendData:(NSString *)method
        authHeader:(NSString *)authHeader
              data:(NSData *)data
@@ -202,9 +190,7 @@ RCT_EXPORT_METHOD(upload:(NSString *)method
         }
     });
 }
-
 // MARK: - Database
-
 RCT_EXPORT_METHOD(installPrebuiltDatabase:(NSString *) databaseName)
 {
     CBLManager* manager = [CBLManager sharedInstance];
@@ -214,24 +200,23 @@ RCT_EXPORT_METHOD(installPrebuiltDatabase:(NSString *) databaseName)
         [manager replaceDatabaseNamed:databaseName withDatabaseDir:dbPath error:nil];
     }
 }
-
-RRCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
+RCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
                    password: (NSString *) password )
 {
     if (manager == NULL) {
         manager = [CBLManager sharedInstance];
     }
     
-    [self openFTSDatabase:name password:password];
+    [self openFTSDatabase:databaseName password:password];
     
     CBLDatabaseOptions* options = [[CBLDatabaseOptions alloc] init];
     options.storageType = @"SQLite";
-    options.encryptionKey = password;
+//    options.encryptionKey = password;
     options.create = YES;
     couchDb = [manager openDatabaseNamed:databaseName withOptions:options error:nil];
     
     if (!couchDb) {
-        NSLog(@"ERROR: Cannot open couch database: %@", error);
+        NSLog(@"ERROR: Cannot open couch database");
     }
     else {
         NSLog(@"OK: Couch database open");
@@ -251,7 +236,6 @@ RRCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
         }
     }];
 }
-
 -(void) openFTSDatabase : (NSString*) name  password:(NSString*) password {
     NSString* databasePath;
     NSArray*  paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
@@ -280,10 +264,9 @@ RRCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
         NSLog(@"ERROR: Opening full text database: %@", name);
     }
 }
-
-RCT_REMAP_METHOD(attendeeSearch, term:(NSString*)term,
+RCT_REMAP_METHOD(attendeeSearch, term:(NSString*)term
                  resolver: (RCTPromiseResolveBlock)resolve
-                 rejecter:(RCTPromiseRejectBlock)reject)
+                 rejecter: (RCTPromiseRejectBlock)reject)
 {
     NSMutableArray *retVal = [[NSMutableArray alloc] init];
     NSString *queryStatement = [NSString stringWithFormat:@"SELECT doc_id FROM full_text_search WHERE doc_text LIKE '%@'",term];
@@ -300,5 +283,4 @@ RCT_REMAP_METHOD(attendeeSearch, term:(NSString*)term,
     }
     resolve(retVal);
 }
-
 @end
