@@ -262,12 +262,13 @@ RCT_REMAP_METHOD(attendeeSearch,
        NSMutableArray *retVal = [[NSMutableArray alloc] init];
        NSError* error;
        CBLQuery* query = [[bgDb viewNamed: @"AttendeeSearch"] createQuery];
-       query.fullTextQuery = term;
+       NSString *termWild = [term stringByAppendingString:@"*"];
+       query.fullTextQuery = termWild;
        query.fullTextSnippets = YES;
        
        CBLQueryEnumerator* result = [query run: &error];
        
-       NSLog(@"Query Term='%@' found=%lu", term, (unsigned long)result.count );
+       NSLog(@"Query Term='%@' found=%lu", termWild, (unsigned long)result.count );
        
        for (CBLFullTextQueryRow* row in result) {
            [retVal addObject:row.value];
