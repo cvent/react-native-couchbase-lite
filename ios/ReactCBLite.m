@@ -224,11 +224,19 @@ RCT_EXPORT_METHOD(openEncryptedDatabase:(NSString *) databaseName
 }
 
 -(void)createAttendeeFullTextIndex {
-    // Attendee Search view does not exist... create it.
     [[couchDb viewNamed: @"AttendeeSearch"] setMapBlock: MAPBLOCK({
         if ([doc[@"type"] isEqual: @"Attendee"]) {
-            emit(CBLTextKey(doc[@"name"]), doc[@"_id"]);
-        }        
+            // Build an array of _id, id, name (will be the indexed document)
+            NSString* iid = doc[@"_id"];
+            NSString* eid = doc[@"id"];
+            NSString* name = doc[@"name"];
+            NSMutableArray *val = [[NSMutableArray alloc] init];
+            [val addObject:iid];
+            [val addObject:eid];
+            [val addObject:name];
+            // Index by [name, val (_id, id, name)]
+            emit(CBLTextKey(doc[@"name"]), val);
+        }
     }) reduceBlock: NULL version: @"1"];
 }
 
