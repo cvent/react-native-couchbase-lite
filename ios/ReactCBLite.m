@@ -256,7 +256,7 @@ RCT_REMAP_METHOD(attendeeSearch,
        NSString *termWild = [term stringByAppendingString:@"*"];
        query.fullTextQuery = termWild;
        query.fullTextSnippets = YES;
-	query.limit = limit;
+       query.limit = limit;
        
        CBLQueryEnumerator* result = [query run: &error];
        
