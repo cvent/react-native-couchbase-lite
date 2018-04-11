@@ -55,6 +55,7 @@ public class ReactCBLite extends ReactContextBaseJavaModule {
     private Manager manager;
     private Credentials allowedCredentials;
     private LiteListener listener;
+    private SQLiteDatabase ftsDB;
 
     public ReactCBLite(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -378,7 +379,72 @@ public class ReactCBLite extends ReactContextBaseJavaModule {
         options.setCreate(true);
         options.setEncryptionKey(password);
         Database database = manager.openDatabase(databaseName, options);
+
+        // Create full-text search database
+        // (because the Couchbase team didn't implement FTS for Android)
+        ftsDB = openFTSDatabase();
+        if (ftsDB == null) {
+            ftsDB = SQLiteDatabase.openOrCreateDatabase("/data/data/com.cventmobile/databases/fulltext.db", null, null);
+            ftsDB.execSQL("CREATE VIRTUAL TABLE attendee USING fts4(tokenize = porter, name)");
+        }
+
+        // Register full-text search observer
+        database.addChangeListener(new Database.ChangeListener() {
+            public void changed(Database.ChangeEvent event) {
+                for (DocumentChange change : event.getChanges()) {
+                    Log.e("CBLite", "Change detected: " + change);
+                    RevisionInternal addedRevision = change.getAddedRevision();
+                    Body body = addedRevision.getBody();
+                    Object typeObj = body.getPropertyForKey("type");
+                    if (typeObj != null) {
+                        String type = typeObj.toString();
+                        if (type.equals("Attendee")) {
+                            String name = body.getPropertyForKey("name").toString();
+                            try {
+                                ftsDB.execSQL("INSERT INTO attendee(name) VALUES(?);", new Object[] { name });
+                            } catch (SQLiteException e) {
+                                Log.e("CventMobile", "Error inserting to FTS DB: " + e.getMessage());
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 
+    private SQLiteDatabase openFTSDatabase() {
+        SQLiteDatabase ftsDB = null;
+        try {
+            ftsDB = SQLiteDatabase.openDatabase("/data/data/com.cventmobile/databases/fulltext.db", null, SQLiteDatabase.OPEN_READWRITE);
+        }
+        catch (SQLiteException e) {
+            Log.d("CventMobile", "FTS database not found. Apparently we still check this with exceptions because it's 1997");
+        }
+        return ftsDB;
+    }
 
+    @ReactMethod
+    public void attendeeSearch(String searchTerm, Integer limit, Promise promise) {
+        // Perform full text search
+        Cursor cursor = ftsDB.rawQuery("SELECT * FROM attendee WHERE name LIKE '%" + searchTerm + "%'", null);
+
+        // Parse results
+        WritableNativeArray results = new WritableNativeArray();
+        Integer resultCount = 0;
+        if (cursor.getCount() > 0) {
+            cursor.moveToFirst();
+            do {
+                WritableNativeArray attendee = new WritableNativeArray();
+                attendee.pushString(cursor.getString(cursor.getColumnIndex("name")));
+                attendee.pushString(cursor.getString(cursor.getColumnIndex("name")));
+                attendee.pushString(cursor.getString(cursor.getColumnIndex("name")));
+                results.pushArray(attendee);
+                resultCount++;
+            } while (resultCount < 1000 && cursor.moveToNext());
+        }
+        cursor.close();
+        
+        // Return the results
+        promise.resolve(results);
+    }
 }
